@@ -64,7 +64,7 @@ Exit codes: `0` success and DC, `1` success and NOT DC (or no repair), `2` input
 | `timelens alerts-eval MODEL.bpmn RULES.json LOG MAPPING.yaml` | Replays the test cases with run-time alerts and a static baseline. Writes `results/alerts_eval.json` and `.md`. Pass repaired (DC) rules. |
 | `timelens bench [--sizes 10,25,50] [--models 20] [--seed 7]` | Timing benchmark on random structured processes. Writes `results/bench.csv` and `results/bench.png`. |
 
-`LOG` is a `.xes` or `.xes.gz` file (read with pm4py and cached as parquet next to it) or a `.parquet` cache.
+`LOG` is a `.xes` or `.xes.gz` file (read with pm4py), a `.csv` file with XES column names (`case:concept:name`, `concept:name`, `lifecycle:transition`, `time:timestamp` in ISO 8601), or a `.parquet` cache. XES and CSV logs are cached as parquet next to the file.
 
 ## Example: `loan_minimal`
 
@@ -104,10 +104,12 @@ Without the KYC lever, the repair sends reminders to the customer (upload maximu
 
 ## BPI Challenge 2017 workflow
 
-Data: BPI Challenge 2017, loan applications of a Dutch financial institute, DOI [10.4121/uuid:5f3067df-f10b-45da-b98b-86ae4c7a310b](https://doi.org/10.4121/uuid:5f3067df-f10b-45da-b98b-86ae4c7a310b). Put `BPI Challenge 2017.xes.gz` in `data/` (not in git).
+Data: BPI Challenge 2017, loan applications of a Dutch financial institute, DOI [10.4121/uuid:5f3067df-f10b-45da-b98b-86ae4c7a310b](https://doi.org/10.4121/uuid:5f3067df-f10b-45da-b98b-86ae4c7a310b). Put `BPI Challenge 2017.xes.gz`, or a CSV export of it, in `data/` (not in git).
+
+The results below use `data/bpi_2017_cleaned.csv`, a CSV copy from Kaggle. It has the same size as the official application log: 1,202,267 events, 31,509 cases, 26 activities, 1 January 2016 to 1 February 2017.
 
 ```bash
-LOG="data/BPI Challenge 2017.xes.gz"
+LOG="data/bpi_2017_cleaned.csv"     # or "data/BPI Challenge 2017.xes.gz"
 timelens discover-log "$LOG"                       # check the activity names first
 timelens calibrate "$LOG" config/mapping_bpi2017.yaml \
     examples/bpi2017/loan_bpi.rules.template.json --alpha 0.95 --out results/bpi.rules.json
@@ -119,6 +121,41 @@ timelens alerts-eval examples/bpi2017/loan_bpi.bpmn results/bpi.repaired.json \
     "$LOG" config/mapping_bpi2017.yaml
 timelens bench
 ```
+
+### Results on BPI 2017
+
+All costs and lever limits are assumptions. Deadline: 36 d, the 90th percentile of training case durations (35 d 19 h 38 m) rounded up. No user choice was given.
+
+Calibration at alpha 0.95 (22,056 training cases):
+
+| Task | Samples | Dropped | Range |
+| --- | --- | --- | --- |
+| Complete application (staff) | 13,246 | 8,810 | 3 m to 3 d 12 h 5 m |
+| Customer returns offer | 15,085 | 6,971 | 2 d 18 h 38 m to 28 d 3 h 9 m |
+| Validate application (staff) | 7,951 | 14,105 | 0 m to 21 d 3 h 38 m |
+
+Joint coverage on the test set: 0.878 (1,765 cases with every mapped event), so the risk is 12.2 %.
+
+Risk vs cost frontier (`results/frontier.csv`, `results/frontier.png`):
+
+| alpha | Risk | Verdict | Minimum repair cost |
+| --- | --- | --- | --- |
+| 0.80 | 60.3 % | DC | 0 |
+| 0.85 | 49.0 % | DC | 0 |
+| 0.90 | 36.9 % | NOT DC | 112,500 INR |
+| 0.95 | 12.2 % | NOT DC | 519,583 INR |
+| 0.99 | 2.7 % | NOT DC | no repair within the lever limits |
+
+The repair at alpha 0.95 uses all four levers: completion maximum -2 d, customer return maximum -10 d, validation maximum -2 d, deadline +2 d 19 h.
+
+Alert replay on the repaired alpha 0.95 rules (`results/alerts_eval.md`). It uses 1,755 test cases. 7,698 were skipped because an event was missing (open or cancelled cases).
+
+| Method | Precision | Recall | F1 | Median lead |
+| --- | --- | --- | --- | --- |
+| TimeLens latest safe start | 0.071 | 0.888 | 0.132 | 38 d 19 h |
+| Static: no decision by deadline - 3 d | 0.806 | 1.000 | 0.892 | 3 d |
+
+**TimeLens alerts do not beat the static rule on this model.** The minimum-cost repair leaves almost no slack, so the latest safe start of "Complete application" is about 16 minutes after case creation. The model treats the waits before each task as gaps that the bank controls (`[0, inf)`). The real log has waits of hours or days, so almost every case alerts at once. With the unrepaired alpha 0.85 rules (DC with 10 h 38 m slack) precision is still only 0.085. To improve the monitor, model the waits as contingent tasks, or keep slack in the repair.
 
 Calibration splits cases by start time: the first 70 % train, the last 30 % test. A task with fewer than 30 samples is not calibrated (warning). Range at coverage alpha: floor of the `(1 - alpha) / 2` quantile to ceil of the `1 - (1 - alpha) / 2` quantile. Risk is `1 - empirical joint coverage` on the test set (no independence formula).
 
