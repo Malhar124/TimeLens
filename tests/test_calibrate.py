@@ -98,3 +98,27 @@ def test_cli_calibrate_writes_valid_rules(tmp_path):
     assert "90th percentile" in (rules.notes or "")
     assert rules.tasks["Task_CustomerReturn"].max > 1440
     assert "Joint coverage on the test set" in res.output
+
+
+def test_csv_log_loads_and_caches(tmp_path):
+    from timelens.mining.log import cache_path, load_log
+
+    csv = tmp_path / "bpi.csv"
+    csv.write_text(
+        "Action,concept:name,lifecycle:transition,time:timestamp,case:concept:name,OfferID\n"
+        "Created,A_Create Application,complete,2016-01-01 09:51:15.304000+00:00,App_1,\n"
+        "Obtained,W_Complete application,start,2016-01-02 10:45:22+00:00,App_1,\n")
+    df = load_log(csv)
+    assert list(df.columns) == ["case:concept:name", "concept:name", "lifecycle:transition",
+                                "time:timestamp"]
+    assert str(df["time:timestamp"].dt.tz) == "UTC" and len(df) == 2
+    assert cache_path(csv) == tmp_path / "bpi.parquet" and cache_path(csv).exists()
+
+
+def test_csv_without_lifecycle_or_timestamp_is_an_error(tmp_path):
+    from timelens.mining.log import load_log
+
+    csv = tmp_path / "bad.csv"
+    csv.write_text("concept:name,case:concept:name\nA_Create Application,App_1\n")
+    with pytest.raises(LogMappingError, match="time:timestamp"):
+        load_log(csv)

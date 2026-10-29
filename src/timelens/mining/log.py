@@ -1,7 +1,8 @@
-"""Event log: load (XES via pm4py, cached as parquet), map events to timepoints, split by time."""
+"""Event log: load (XES or CSV, cached as parquet), map events to timepoints, split by time."""
 
 from __future__ import annotations
 
+import re
 import warnings
 from pathlib import Path
 from typing import Literal
@@ -18,12 +19,28 @@ COLUMNS = [CASE, ACT, LIFE, TIME]
 
 
 def cache_path(path: Path) -> Path:
-    """Return the parquet cache next to the log ("x.xes.gz" -> "x.parquet")."""
-    return path.with_name(path.name.split(".xes")[0] + ".parquet")
+    """Return the parquet cache next to the log ("x.xes.gz" or "x.csv" -> "x.parquet")."""
+    return path.with_name(re.sub(r"\.(xes(\.gz)?|csv)$", "", path.name) + ".parquet")
+
+
+def _read_xes(path: Path) -> pd.DataFrame:
+    import pm4py  # slow import with a banner: load only when parsing XES
+
+    log = pm4py.read_xes(str(path))
+    return log if isinstance(log, pd.DataFrame) else pm4py.convert_to_dataframe(log)
+
+
+def _read_csv(path: Path) -> pd.DataFrame:
+    """Read a CSV export with XES column names (as pm4py writes it), keeping only COLUMNS."""
+    return pd.read_csv(path, usecols=lambda c: c in COLUMNS, dtype=str)
 
 
 def load_log(path: str | Path) -> pd.DataFrame:
-    """Return the log as a DataFrame with COLUMNS and UTC timestamps. Caches XES as parquet."""
+    """Return the log as a DataFrame with COLUMNS and UTC timestamps.
+
+    Reads .xes / .xes.gz (pm4py), .csv (XES column names) or a .parquet cache. XES and CSV
+    logs are cached as parquet next to the file.
+    """
     path = Path(path)
     if not path.exists():
         raise LogMappingError(f"event log not found: {path}")
@@ -32,17 +49,17 @@ def load_log(path: str | Path) -> pd.DataFrame:
     cache = cache_path(path)
     if cache.exists() and cache.stat().st_mtime >= path.stat().st_mtime:
         return pd.read_parquet(cache)
-    import pm4py  # slow import with a banner: load only when parsing XES
-
-    log = pm4py.read_xes(str(path))
-    df = log if isinstance(log, pd.DataFrame) else pm4py.convert_to_dataframe(log)
+    df = _read_csv(path) if path.suffix == ".csv" else _read_xes(path)
     if LIFE not in df.columns:
         df[LIFE] = "complete"
     missing = [c for c in COLUMNS if c not in df.columns]
     if missing:
         raise LogMappingError(f"{path}: log lacks columns {missing}")
     df = df[COLUMNS].copy()
-    df[TIME] = pd.to_datetime(df[TIME], utc=True)
+    try:
+        df[TIME] = pd.to_datetime(df[TIME], utc=True, format="ISO8601")
+    except ValueError as e:
+        raise LogMappingError(f"{path}: {TIME} is not an ISO 8601 timestamp: {e}") from e
     df[CASE] = df[CASE].astype(str)
     df.to_parquet(cache)
     return df
