@@ -51,7 +51,7 @@ def _fw(D: Matrix, C: Coefs | None) -> tuple[Matrix, Coefs | None]:
 def dc_check(stnu: STNU, provenance: bool | None = None, debug: bool = False) -> DCResult:
     """Return whether `stnu` is dynamically controllable.
 
-    D(rounds * (n^3 + K n^2 + K^2)); provenance multiplies the matrix work by P (parameters).
+    O(rounds * (n^3 + K n^2 + K^2)); provenance multiplies the matrix work by P (parameters).
     Provenance defaults to on for n <= 200. `debug` asserts the provenance invariant each round.
     """
     n, K = len(stnu.timepoints), len(stnu.links)
@@ -64,11 +64,15 @@ def dc_check(stnu: STNU, provenance: bool | None = None, debug: bool = False) ->
     xv = [lk.lower.vector(pidx) for lk in stnu.links]
     ordinary = stnu.edges + requirement_edges(stnu.links)
 
-    DP: Coefs | None
+    # R holds the raw ordinary edges (given plus derived), D its closure. The AllMax pass runs on
+    # R, not on D, so the first negative cycle it closes is the most negative one over the
+    # pivots seen so far (a closed D would close weaker cycles first). Same verdict either way.
+    RP: Coefs | None
     if prov:
-        D, DP = distance_matrix_prov(stnu, ordinary)
+        R, RP = distance_matrix_prov(stnu, ordinary)
     else:
-        D, DP = distance_matrix(n, weighted(stnu, ordinary)), None
+        R, RP = distance_matrix(n, weighted(stnu, ordinary)), None
+    D, DP = R, RP
     U = np.full((K, n), np.inf)
     UP: npt.NDArray[np.int32] | None = np.zeros((K, n, len(pids)), dtype=np.int32) if prov else None
     for m, lk in enumerate(stnu.links):
@@ -81,12 +85,12 @@ def dc_check(stnu: STNU, provenance: bool | None = None, debug: bool = False) ->
         return DCResult(False, rounds, D, U, form, where)
 
     for rnd in range(1, max_rounds(K) + 1):
-        D, DP = _fw(D, DP)
+        D, DP = _fw(R, RP)
         if (i := negative_diagonal(D)) is not None:
             return fail("ordinary", i, DP, rnd)
 
         # AllMax check: upper-case edges as ordinary, lower-case edges ignored.
-        M, MP = D.copy(), (DP.copy() if DP is not None else None)
+        M, MP = R.copy(), (RP.copy() if RP is not None else None)
         for m in range(K):
             better = U[m] < M[:, act[m]]
             M[better, act[m]] = U[m][better]
@@ -113,9 +117,9 @@ def dc_check(stnu: STNU, provenance: bool | None = None, debug: bool = False) ->
             cand = x[L] + row
             v = np.flatnonzero((row < 0) & (cand < D[act[L]]))
             if v.size:
-                if DP is not None:
-                    DP[act[L], v] = xv[L] + DP[end[L], v]
-                D[act[L], v] = cand[v]
+                if DP is not None and RP is not None:
+                    DP[act[L], v] = RP[act[L], v] = xv[L] + DP[end[L], v]
+                D[act[L], v] = R[act[L], v] = cand[v]
                 changed = True
         for L in range(K):  # cross-case: A_L -c:x-> C_L, C_L -M:z-> A_M, z < 0, M != L
             for m in range(K):
@@ -128,13 +132,14 @@ def dc_check(stnu: STNU, provenance: bool | None = None, debug: bool = False) ->
         for m in range(K):  # label removal: B -M:z-> A_M with z >= -x_M  =>  B -z-> A_M
             v = np.flatnonzero((U[m] >= -x[m]) & (U[m] < D[:, act[m]]))
             if v.size:
-                if DP is not None and UP is not None:
-                    DP[v, act[m]] = UP[m, v]
-                D[v, act[m]] = U[m, v]
+                if DP is not None and RP is not None and UP is not None:
+                    DP[v, act[m]] = RP[v, act[m]] = UP[m, v]
+                D[v, act[m]] = R[v, act[m]] = U[m, v]
                 changed = True
 
-        if debug and DP is not None and UP is not None:
+        if debug and DP is not None and RP is not None and UP is not None:
             check_invariant(D, DP, pval)
+            check_invariant(R, RP, pval)
             for m in range(K):
                 check_invariant(U[m][None, :], UP[m][None, :], pval)
         if not changed:
