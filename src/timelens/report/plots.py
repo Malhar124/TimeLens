@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import textwrap
 from pathlib import Path
 
 import pandas as pd
@@ -21,15 +22,16 @@ def frontier_png(points: list[FrontierPoint], path: Path, currency: str, caption
         ax.annotate(f"alpha={p.alpha:.2f}", (p.risk * 100, p.cost), textcoords="offset points",
                     xytext=(6, 6), fontsize=8)
     for p in points:
-        if math.isnan(p.cost):
-            ax.annotate(f"alpha={p.alpha:.2f}: no repair", (p.risk * 100, 0), fontsize=8,
-                        color="#b03030")
+        if math.isnan(p.cost):  # plotted as a marker so the axis range includes it
+            ax.plot(p.risk * 100, 0, "x", color="#b03030", markersize=9)
+            ax.annotate(f"alpha={p.alpha:.2f}: no repair", (p.risk * 100, 0),
+                        textcoords="offset points", xytext=(6, 6), fontsize=8, color="#b03030")
     ax.set_xlabel("Risk: test cases outside a calibrated range (%)")
     ax.set_ylabel(f"Minimum repair cost ({currency}, assumption)")
     ax.set_title("TimeLens risk vs cost frontier")
     ax.grid(alpha=0.3)
-    fig.text(0.01, 0.01, caption, fontsize=7, wrap=True)
-    fig.tight_layout(rect=(0, 0.06, 1, 1))
+    fig.text(0.01, 0.01, textwrap.fill(caption, 120), fontsize=7)
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
     fig.savefig(path, dpi=130)
 
 
