@@ -18,9 +18,17 @@ import typer
 from timelens.analysis.repair import repair as run_repair
 from timelens.analysis.verdict import check_process
 from timelens.errors import TimeLensError
+from timelens.mining.calibrate import (
+    CalibrationResult,
+    calibrate_template,
+    case_duration_stats,
+    default_deadline_days,
+)
+from timelens.mining.log import case_times, discover, load_log, load_mapping, split_by_time
 from timelens.model.process import load_model
-from timelens.model.rules import load_levers
+from timelens.model.rules import Rules, load_levers
 from timelens.report.text import NO_COST_NOTE, check_report, header, render, repair_block
+from timelens.units import format_minutes
 
 app = typer.Typer(help="TimeLens: temporal constraint analysis for BPMN processes.",
                   no_args_is_help=True)
@@ -91,3 +99,66 @@ def repair(model: Path, rules: Path, levers: Path, json_out: JsonOut = None) -> 
     typer.echo(render(report))
     _write_json(json_out, report)
     raise typer.Exit(1 if result.status == "NO_REPAIR" else 0)
+
+
+@app.command("discover-log")
+@guarded
+def discover_log(log: Path) -> None:
+    """Print every activity with its lifecycle values and counts."""
+    table = discover(load_log(log))
+    typer.echo(f"{'activity':<40}{'lifecycle':<16}{'count':>8}")
+    for row in table.itertuples(index=False):
+        typer.echo(f"{row[0]:<40}{row[1]:<16}{row[2]:>8}")
+
+
+def _prepare(log: Path, mapping: Path) -> tuple[Any, Any]:
+    """Return (train, test) case time tables, split 70/30 by case start."""
+    times = case_times(load_log(log), load_mapping(mapping))
+    return split_by_time(times)
+
+
+def _deadline(train: Any, days: int | None) -> tuple[int, str]:
+    """Return (deadline in minutes, reason text). Prints the case duration distribution."""
+    st = case_duration_stats(train)
+    typer.echo(f"Case duration (training set, n={st['n']}): median "
+               f"{format_minutes(round(st['median']))}, p80 {format_minutes(round(st['p80']))}, "
+               f"p90 {format_minutes(round(st['p90']))}")
+    if days is not None:
+        return days * 1440, f"Deadline {days} d, chosen by the user (assumption: the log has none)."
+    d = default_deadline_days(st)
+    return d * 1440, (f"Deadline {d} d = 90th percentile of training case durations "
+                      f"({format_minutes(round(st['p90']))}) rounded up to whole days; "
+                      "no user choice given (assumption: the log has no official deadline).")
+
+
+def _print_calibration(res: CalibrationResult) -> None:
+    typer.echo(f"{'task':<24}{'n':>7}{'dropped':>9}{'min':>14}{'max':>14}{'alpha':>7}")
+    for c in res.table:
+        flag = "" if c.calibrated else "  (not calibrated: < 30 samples)"
+        typer.echo(f"{c.task:<24}{c.n:>7}{c.dropped:>9}{format_minutes(c.min):>14}"
+                   f"{format_minutes(c.max):>14}{c.alpha:>7}{flag}")
+    typer.echo(f"Joint coverage on the test set: {res.coverage:.3f} "
+               f"({res.coverage_cases} cases), risk {res.risk:.3f}")
+
+
+DeadlineDays = Annotated[int | None, typer.Option(
+    help="Deadline in whole days. Default: p90 of case durations, rounded up.")]
+
+
+@app.command()
+@guarded
+def calibrate(log: Path, mapping: Path, template: Path,
+              out: Annotated[Path, typer.Option(help="Calibrated rules JSON to write.")],
+              alpha: Annotated[float, typer.Option(min=0.5, max=0.999)] = 0.95,
+              deadline_days: DeadlineDays = None) -> None:
+    """Calibrate contingent duration ranges from the event log (train on the first 70 %)."""
+    train, test = _prepare(log, mapping)
+    deadline, reason = _deadline(train, deadline_days)
+    typer.echo(reason)
+    res = calibrate_template(train, test, json.loads(template.read_text()), alpha, deadline,
+                             reason)
+    Rules.model_validate(res.rules)
+    _print_calibration(res)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(res.rules, indent=2))
+    typer.echo(f"Rules written: {out}")

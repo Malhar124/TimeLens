@@ -1,0 +1,16 @@
+# Mapping from BPI Challenge 2017 events to model timepoints (assumption).
+# The activity names follow the build guide. They MUST be checked against the real log with
+#   timelens discover-log "data/BPI Challenge 2017.xes.gz"
+# `timelens calibrate` stops with an error if a name or lifecycle value is not in the log.
+case_start: {activity: "A_Create Application", occurrence: first}
+case_end:   {activity_any: ["A_Pending", "A_Denied", "A_Cancelled"], occurrence: first}
+tasks:
+  Task_Complete:          # staff completes the application
+    start: {activity: "W_Complete application", lifecycle: "start", occurrence: first}
+    end:   {activity: "W_Complete application", lifecycle: "complete", occurrence: last}
+  Task_CustomerReturn:    # customer returns the signed offer and documents
+    start: {activity: "O_Sent (mail and online)", occurrence: first}
+    end:   {activity: "O_Returned", occurrence: first}
+  Task_Validate:          # staff validates the application
+    start: {activity: "W_Validate application", lifecycle: "start", occurrence: first}
+    end:   {activity: "W_Validate application", lifecycle: "complete", occurrence: last}

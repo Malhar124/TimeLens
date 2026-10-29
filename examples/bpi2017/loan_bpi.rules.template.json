@@ -1,0 +1,20 @@
+{
+  "process_id": "loan_bpi",
+  "notes": "Template: timelens calibrate replaces every task min/max and C_deadline.max.",
+  "xor_outcome_known_at": "split",
+  "tasks": {
+    "Task_Complete":       {"kind": "contingent", "owner": "staff",    "min": "0", "max": "1d"},
+    "Task_CustomerReturn": {"kind": "contingent", "owner": "customer", "min": "0", "max": "1d"},
+    "Task_Validate":       {"kind": "contingent", "owner": "staff",    "min": "0", "max": "1d"}
+  },
+  "constraints": [
+    {
+      "id": "C_deadline",
+      "type": "deadline",
+      "label": "Decision within the chosen deadline (assumption)",
+      "from": {"element": "StartEvent_1", "point": "start"},
+      "to":   {"element": "EndEvent_1",   "point": "end"},
+      "max": "30d"
+    }
+  ]
+}
