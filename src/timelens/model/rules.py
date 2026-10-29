@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import warnings
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, model_validator
@@ -115,6 +115,19 @@ class Rules(_Strict):
             if t.kind == "contingent" and t.min == t.max:
                 warnings.warn(f"{tid}: contingent with min == max, treated as controllable",
                               stacklevel=2)
+
+
+def rules_with_values(rules: Rules, values: dict[str, int]) -> dict[str, Any]:
+    """Return the rules as JSON data with parameter values (e.g. after a repair) written in."""
+    data = rules.model_dump(by_alias=True, exclude_none=True)
+    for tid, t in data["tasks"].items():
+        t["min"], t["max"] = values.get(f"{tid}.min", t["min"]), values.get(f"{tid}.max", t["max"])
+    for group, key in (("constraints", "id"), ("flow_gaps", "flow")):
+        for item in data[group]:
+            for bound in ("min", "max"):
+                if bound in item:
+                    item[bound] = values.get(f"{item[key]}.{bound}", item[bound])
+    return data
 
 
 def load_rules(path: str | Path) -> Rules:

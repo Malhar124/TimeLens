@@ -52,3 +52,30 @@ def test_input_error_exit_2(tmp_path, minimal_paths):
     bad.write_text("{}")
     res = runner.invoke(app, ["check", str(minimal_paths[0]), str(bad)])
     assert res.exit_code == 2
+
+
+def test_repair_writes_rules_that_check_as_dc(tmp_path, minimal_paths):
+    out = tmp_path / "repaired.rules.json"
+    runner.invoke(app, ["repair", *map(str, minimal_paths), "config/levers_loan.yaml",
+                        "--rules-out", str(out)])
+    res = runner.invoke(app, ["check", str(minimal_paths[0]), str(out)])
+    assert res.exit_code == 0, res.output
+
+
+def test_alerts_eval_writes_both_result_files(tmp_path):
+    from tests.synth import synthetic_log
+
+    log = tmp_path / "synthetic.parquet"
+    synthetic_log(100).to_parquet(log)
+    rules = tmp_path / "bpi.rules.json"
+    runner.invoke(app, ["calibrate", str(log), "config/mapping_bpi2017.yaml",
+                        "examples/bpi2017/loan_bpi.rules.template.json", "--out", str(rules),
+                        "--deadline-days", "40"])
+    res = runner.invoke(app, ["alerts-eval", "examples/bpi2017/loan_bpi.bpmn", str(rules),
+                              str(log), "config/mapping_bpi2017.yaml", "--out-dir",
+                              str(tmp_path)])
+    assert res.exit_code == 0, res.output
+    report = json.loads((tmp_path / "alerts_eval.json").read_text())
+    assert report["test_cases_used"] == 30 and "static_baseline" in report
+    md = (tmp_path / "alerts_eval.md").read_text()
+    assert "Deadline choice: Deadline 40 d, chosen by the user" in md

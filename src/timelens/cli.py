@@ -16,6 +16,7 @@ from typing import Annotated, Any, ParamSpec, TypeVar
 import pandas as pd
 import typer
 
+from timelens.analysis.alerts import evaluate, traces_from_times
 from timelens.analysis.frontier import cost_never_decreases
 from timelens.analysis.frontier import frontier as run_frontier
 from timelens.analysis.repair import repair as run_repair
@@ -29,8 +30,16 @@ from timelens.mining.calibrate import (
 )
 from timelens.mining.log import case_times, discover, load_log, load_mapping, split_by_time
 from timelens.model.process import load_model, load_process
-from timelens.model.rules import Rules, load_levers
-from timelens.report.text import NO_COST_NOTE, check_report, header, render, repair_block
+from timelens.model.rules import Rules, load_levers, rules_with_values
+from timelens.report.text import (
+    NO_COST_NOTE,
+    check_report,
+    header,
+    render,
+    render_markdown,
+    repair_block,
+)
+from timelens.stnu.build import build_stnu
 from timelens.units import format_minutes
 
 app = typer.Typer(help="TimeLens: temporal constraint analysis for BPMN processes.",
@@ -86,7 +95,9 @@ def check(model: Path, rules: Path, json_out: JsonOut = None,
 
 @app.command()
 @guarded
-def repair(model: Path, rules: Path, levers: Path, json_out: JsonOut = None) -> None:
+def repair(model: Path, rules: Path, levers: Path, json_out: JsonOut = None,
+           rules_out: Annotated[Path | None, typer.Option(
+               help="Write the repaired rules JSON here (input for alerts-eval).")] = None) -> None:
     """Find the cheapest lever changes that make the process dynamically controllable."""
     process, r = load_model(model, rules)
     lv = load_levers(levers)
@@ -101,6 +112,10 @@ def repair(model: Path, rules: Path, levers: Path, json_out: JsonOut = None) -> 
     report["repair"] = repair_block(result)
     typer.echo(render(report))
     _write_json(json_out, report)
+    if rules_out is not None and result.status != "NO_REPAIR":
+        rules_out.parent.mkdir(parents=True, exist_ok=True)
+        rules_out.write_text(json.dumps(rules_with_values(r, result.values), indent=2))
+        typer.echo(f"Repaired rules: {rules_out}")
     raise typer.Exit(1 if result.status == "NO_REPAIR" else 0)
 
 
@@ -209,3 +224,48 @@ def frontier(model: Path, log: Path, mapping: Path, template: Path, levers: Path
     if not cost_never_decreases(points):
         typer.echo("BUG: minimum cost goes down when alpha goes up. Please report it.", err=True)
         raise typer.Exit(3)
+
+
+def _score_line(name: str, sc: dict[str, Any]) -> str:
+    lead = sc["median_lead_min"]
+    lead_txt = "n/a" if lead != lead else format_minutes(round(lead))
+    return (f"| {name} | {sc['alerts']} | {sc['tp']} | {sc['fp']} | {sc['fn']} | "
+            f"{sc['precision']:.3f} | {sc['recall']:.3f} | {sc['f1']:.3f} | {lead_txt} |")
+
+
+@app.command("alerts-eval")
+@guarded
+def alerts_eval(model: Path, rules: Path, log: Path, mapping: Path,
+                out_dir: ResultsDir = Path("results")) -> None:
+    """Replay the test cases (last 30 %) with run-time alerts; compare with a static rule."""
+    process, r = load_model(model, rules)
+    deadline_c = next((c for c in r.constraints if c.type == "deadline"), None)
+    if deadline_c is None or deadline_c.max is None:
+        raise TimeLensError("alerts-eval needs a deadline constraint in the rules")
+    if check_process(process, r).dynamically_controllable != "DC":
+        typer.echo("Warning: these rules are not DC, so the worst case already misses the "
+                   "deadline and every case alerts at once. Pass repaired rules "
+                   "(timelens repair ... --rules-out).", err=True)
+    _, test = _prepare(log, mapping)
+    traces, skipped = traces_from_times(test, process, process.tasks)
+    names = {f"{t}:s": process.nodes[t].name for t in process.tasks}
+    res = evaluate(build_stnu(process, r), traces, deadline_c.max, names)
+    head = header({"model": str(model), "rules": str(rules), "log": str(log),
+                   "mapping": str(mapping)}, NO_COST_NOTE, deadline_choice=r.notes)
+    report = {"header": head, "deadline_min": deadline_c.max, "test_cases_used": len(traces),
+              "test_cases_skipped": skipped, **res}
+    table = "\n".join([
+        f"Test cases used: {len(traces)}, skipped (missing or bad events): {skipped}. "
+        f"Deadline: {format_minutes(deadline_c.max)}. Late: {res['timelens']['late']}.", "",
+        "| method | alerts | TP | FP | FN | precision | recall | F1 | median lead |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        _score_line("TimeLens latest safe start", res["timelens"]),
+        _score_line("Static: no decision by deadline - 3 d", res["static_baseline"]),
+        "", "TimeLens is useful only if it alerts earlier at similar precision.",
+    ])
+    typer.echo(table)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "alerts_eval.json").write_text(json.dumps(report, indent=2))
+    (out_dir / "alerts_eval.md").write_text(render_markdown("TimeLens alert evaluation",
+                                                            report, table))
+    typer.echo(f"Wrote {out_dir / 'alerts_eval.json'} and {out_dir / 'alerts_eval.md'}")
