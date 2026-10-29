@@ -77,7 +77,22 @@ def test_alerts_eval_writes_both_result_files(tmp_path):
                               str(log), "config/mapping_bpi2017.yaml", "--out-dir",
                               str(tmp_path)])
     assert res.exit_code == 0, res.output
-    report = json.loads((tmp_path / "alerts_eval.json").read_text())
+    text = (tmp_path / "alerts_eval.json").read_text()
+    assert "NaN" not in text  # undefined scores are null, so the file is standard JSON
+    report = json.loads(text)
     assert report["test_cases_used"] == 30 and "static_baseline" in report
+    assert report["timelens"]["recall"] is None  # 40 d deadline: no case is late
     md = (tmp_path / "alerts_eval.md").read_text()
     assert "Deadline choice: Deadline 40 d, chosen by the user" in md
+
+
+def test_bad_template_is_an_input_error(tmp_path):
+    from tests.synth import synthetic_log
+
+    log = tmp_path / "synthetic.parquet"
+    synthetic_log(50).to_parquet(log)
+    bad = tmp_path / "t.json"
+    bad.write_text("{not json")
+    res = runner.invoke(app, ["calibrate", str(log), "config/mapping_bpi2017.yaml", str(bad),
+                              "--out", str(tmp_path / "r.json")])
+    assert res.exit_code == 2

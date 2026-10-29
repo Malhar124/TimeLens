@@ -21,7 +21,7 @@ from timelens.analysis.frontier import cost_never_decreases
 from timelens.analysis.frontier import frontier as run_frontier
 from timelens.analysis.repair import repair as run_repair
 from timelens.analysis.verdict import check_process
-from timelens.errors import TimeLensError
+from timelens.errors import LogMappingError, TimeLensError
 from timelens.mining.calibrate import (
     CalibrationResult,
     calibrate_template,
@@ -30,7 +30,7 @@ from timelens.mining.calibrate import (
 )
 from timelens.mining.log import case_times, discover, load_log, load_mapping, split_by_time
 from timelens.model.process import load_model, load_process
-from timelens.model.rules import Rules, load_levers, rules_with_values
+from timelens.model.rules import Rules, load_levers, load_rules, rules_with_values
 from timelens.report.text import (
     NO_COST_NOTE,
     check_report,
@@ -129,6 +129,13 @@ def discover_log(log: Path) -> None:
         typer.echo(f"{row[0]:<40}{row[1]:<16}{row[2]:>8}")
 
 
+def _template(path: Path) -> dict[str, Any]:
+    """Return the rules template as JSON data after schema validation. Raises RulesError."""
+    load_rules(path)
+    data: dict[str, Any] = json.loads(path.read_text())
+    return data
+
+
 def _prepare(log: Path, mapping: Path) -> tuple[Any, Any]:
     """Return (train, test) case time tables, split 70/30 by case start."""
     times = case_times(load_log(log), load_mapping(mapping))
@@ -138,6 +145,8 @@ def _prepare(log: Path, mapping: Path) -> tuple[Any, Any]:
 def _deadline(train: Any, days: int | None) -> tuple[int, str]:
     """Return (deadline in minutes, reason text). Prints the case duration distribution."""
     st = case_duration_stats(train)
+    if not st["n"]:
+        raise LogMappingError("no training case has both a case start and a case end")
     typer.echo(f"Case duration (training set, n={st['n']}): median "
                f"{format_minutes(round(st['median']))}, p80 {format_minutes(round(st['p80']))}, "
                f"p90 {format_minutes(round(st['p90']))}")
@@ -173,8 +182,7 @@ def calibrate(log: Path, mapping: Path, template: Path,
     train, test = _prepare(log, mapping)
     deadline, reason = _deadline(train, deadline_days)
     typer.echo(reason)
-    res = calibrate_template(train, test, json.loads(template.read_text()), alpha, deadline,
-                             reason)
+    res = calibrate_template(train, test, _template(template), alpha, deadline, reason)
     Rules.model_validate(res.rules)
     _print_calibration(res)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -204,8 +212,7 @@ def frontier(model: Path, log: Path, mapping: Path, template: Path, levers: Path
     train, test = _prepare(log, mapping)
     deadline, reason = _deadline(train, deadline_days)
     typer.echo(reason)
-    points = run_frontier(process, train, test, json.loads(template.read_text()), lv, deadline,
-                          reason)
+    points = run_frontier(process, train, test, _template(template), lv, deadline, reason)
     head = header({"model": str(model), "log": str(log), "mapping": str(mapping),
                    "template": str(template), "levers": str(levers)}, lv.assumption_note,
                   alpha="0.80,0.85,0.90,0.95,0.99", deadline_choice=reason)
@@ -239,9 +246,11 @@ def alerts_eval(model: Path, rules: Path, log: Path, mapping: Path,
                 out_dir: ResultsDir = Path("results")) -> None:
     """Replay the test cases (last 30 %) with run-time alerts; compare with a static rule."""
     process, r = load_model(model, rules)
-    deadline_c = next((c for c in r.constraints if c.type == "deadline"), None)
+    deadline_c = next((c for c in r.constraints if c.type == "deadline"
+                       and c.from_.element == process.start and c.to.element == process.end),
+                      None)
     if deadline_c is None or deadline_c.max is None:
-        raise TimeLensError("alerts-eval needs a deadline constraint in the rules")
+        raise TimeLensError("alerts-eval needs a deadline from the start to the end event")
     if check_process(process, r).dynamically_controllable != "DC":
         typer.echo("Warning: these rules are not DC, so the worst case already misses the "
                    "deadline and every case alerts at once. Pass repaired rules "
@@ -265,7 +274,8 @@ def alerts_eval(model: Path, rules: Path, log: Path, mapping: Path,
     ])
     typer.echo(table)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "alerts_eval.json").write_text(json.dumps(report, indent=2))
+    clean = json.loads(json.dumps(report), parse_constant=lambda _: None)  # NaN -> null
+    (out_dir / "alerts_eval.json").write_text(json.dumps(clean, indent=2, allow_nan=False))
     (out_dir / "alerts_eval.md").write_text(render_markdown("TimeLens alert evaluation",
                                                             report, table))
     typer.echo(f"Wrote {out_dir / 'alerts_eval.json'} and {out_dir / 'alerts_eval.md'}")

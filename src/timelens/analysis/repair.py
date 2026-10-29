@@ -54,6 +54,7 @@ def lever_bounds(levers: Levers, values: dict[str, int]) -> list[tuple[int, int]
             raise RulesError(f"lever {lv.id}: unknown parameter {lv.param}")
         base, _, bound = lv.param.rpartition(".")
         lo, hi = (0, lv.max_change) if lv.direction == "increase" else (-lv.max_change, 0)
+        lo = max(lo, -values[lv.param])  # no time bound goes below zero
         if bound == "max" and f"{base}.min" in values:  # a max must not go below its min
             lo = max(lo, values[f"{base}.min"] - values[lv.param])
         if bound == "min" and f"{base}.max" in values:  # a min must not go above its max

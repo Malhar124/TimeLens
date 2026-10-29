@@ -58,3 +58,13 @@ def test_already_dc_costs_nothing(minimal_paths):
     rules.tasks["Task_KYC"].max = 1440
     r = repair(process, rules, _levers())
     assert (r.status, r.total_cost, r.changes) == ("ALREADY_DC", 0, [])
+
+
+def test_lever_never_pushes_a_bound_below_zero(full_paths):
+    from timelens.model.rules import Levers
+
+    lv = Levers.model_validate({"currency": "INR", "assumption_note": "test", "levers": [
+        {"id": "faster", "label": "Faster approval", "param": "Task_Approval.min",
+         "direction": "decrease", "cost_per_day": 100, "max_change": "3d"}]})
+    r = repair(*load_model(*full_paths), lv)
+    assert all(c.new_min >= 0 for c in r.changes)
