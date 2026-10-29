@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "timelens"
+version = "0.1.0"
+description = "Temporal constraint analysis (consistency, SC, DC, repair) for time-aware BPMN processes"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pandas>=2.1",
+    "pm4py>=2.7",
+    "pydantic>=2.5",
+    "pyyaml>=6.0",
+    "defusedxml>=0.7",
+    "typer>=0.12",
+    "matplotlib>=3.8",
+    "pyarrow>=14",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "hypothesis>=6.100",
+    "ruff",
+    "mypy",
+    "types-PyYAML",
+    "types-defusedxml",
+]
+
+[project.scripts]
+timelens = "timelens.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/timelens"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "src"
+ignore_missing_imports = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["timelens.stnu.*", "timelens.analysis.*"]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
