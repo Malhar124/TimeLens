@@ -1,0 +1,22 @@
+currency: INR
+assumption_note: "All costs are illustrative assumptions, not real bank data."
+granularity: 1h            # round repairs to this step
+levers:
+  - id: add_kyc_staff
+    label: "Add one KYC officer"
+    param: Task_KYC.max
+    direction: decrease
+    cost_per_day: 20000
+    max_change: 1d
+  - id: nudge_customer
+    label: "Send reminders to the customer"
+    param: Task_Upload.max
+    direction: decrease
+    cost_per_day: 30000
+    max_change: 2d
+  - id: extend_deadline
+    label: "Extend the decision deadline (SLA penalty)"
+    param: C_deadline.max
+    direction: increase
+    cost_per_day: 50000
+    max_change: 3d

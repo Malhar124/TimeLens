@@ -1,0 +1,31 @@
+{
+  "process_id": "loan_full",
+  "xor_outcome_known_at": "split",
+  "tasks": {
+    "Task_Upload":       {"kind": "contingent",   "owner": "customer", "min": "1d",  "max": "5d"},
+    "Task_KYC":          {"kind": "contingent",   "owner": "staff",    "min": "1d",  "max": "2d"},
+    "Task_Scoring":      {"kind": "contingent",   "owner": "staff",    "min": "2h",  "max": "6h"},
+    "Task_Fraud":        {"kind": "contingent",   "owner": "staff",    "min": "30m", "max": "2h"},
+    "Task_AutoApprove":  {"kind": "controllable", "owner": "system",   "min": "1h",  "max": "1h"},
+    "Task_ManualReview": {"kind": "contingent",   "owner": "staff",    "min": "4h",  "max": "1d"},
+    "Task_Approval":     {"kind": "controllable", "owner": "staff",    "min": "1d",  "max": "1d"}
+  },
+  "constraints": [
+    {
+      "id": "C_deadline",
+      "type": "deadline",
+      "label": "Decision within 7 days of application",
+      "from": {"element": "StartEvent_1", "point": "start"},
+      "to":   {"element": "EndEvent_1",   "point": "end"},
+      "max": "7d"
+    },
+    {
+      "id": "C_scoring_lag",
+      "type": "lag",
+      "label": "Credit scoring starts within 4 hours of the KYC check end",
+      "from": {"element": "Task_KYC",     "point": "end"},
+      "to":   {"element": "Task_Scoring", "point": "start"},
+      "max": "4h"
+    }
+  ]
+}

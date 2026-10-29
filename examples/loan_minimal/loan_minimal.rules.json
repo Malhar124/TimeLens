@@ -1,0 +1,22 @@
+{
+  "process_id": "loan_minimal",
+  "xor_outcome_known_at": "start",
+  "tasks": {
+    "Task_Upload":   {"kind": "contingent",   "owner": "customer", "min": "1d", "max": "5d"},
+    "Task_KYC":      {"kind": "contingent",   "owner": "staff",    "min": "1d", "max": "2d"},
+    "Task_Approval": {"kind": "controllable", "owner": "staff",    "min": "1d", "max": "1d"}
+  },
+  "constraints": [
+    {
+      "id": "C_deadline",
+      "type": "deadline",
+      "label": "Decision within 7 days of application",
+      "from": {"element": "StartEvent_1", "point": "start"},
+      "to":   {"element": "EndEvent_1",   "point": "end"},
+      "max": "7d"
+    }
+  ],
+  "flow_gaps": [
+    {"flow": "Flow_3", "min": "0", "max": "4h"}
+  ]
+}

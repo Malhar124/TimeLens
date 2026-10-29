@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_loan_full" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="loan_full" isExecutable="false">
+    <bpmn:startEvent id="StartEvent_1" name="Application received">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_Upload" name="Upload documents">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_KYC" name="KYC check">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:parallelGateway id="Gateway_AND_split" name="">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+      <bpmn:outgoing>Flow_5</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:task id="Task_Scoring" name="Credit scoring">
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+      <bpmn:outgoing>Flow_6</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_Fraud" name="Fraud check">
+      <bpmn:incoming>Flow_5</bpmn:incoming>
+      <bpmn:outgoing>Flow_7</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:parallelGateway id="Gateway_AND_join" name="">
+      <bpmn:incoming>Flow_6</bpmn:incoming>
+      <bpmn:incoming>Flow_7</bpmn:incoming>
+      <bpmn:outgoing>Flow_8</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:exclusiveGateway id="Gateway_XOR_split" name="Risk level">
+      <bpmn:incoming>Flow_8</bpmn:incoming>
+      <bpmn:outgoing>Flow_9</bpmn:outgoing>
+      <bpmn:outgoing>Flow_10</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_AutoApprove" name="Auto approval">
+      <bpmn:incoming>Flow_9</bpmn:incoming>
+      <bpmn:outgoing>Flow_11</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_ManualReview" name="Manual review">
+      <bpmn:incoming>Flow_10</bpmn:incoming>
+      <bpmn:outgoing>Flow_12</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_XOR_join" name="">
+      <bpmn:incoming>Flow_11</bpmn:incoming>
+      <bpmn:incoming>Flow_12</bpmn:incoming>
+      <bpmn:outgoing>Flow_13</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_Approval" name="Approval">
+      <bpmn:incoming>Flow_13</bpmn:incoming>
+      <bpmn:outgoing>Flow_14</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="EndEvent_1" name="Decision sent">
+      <bpmn:incoming>Flow_14</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_Upload" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_Upload" targetRef="Task_KYC" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_KYC" targetRef="Gateway_AND_split" />
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Gateway_AND_split" targetRef="Task_Scoring" />
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Gateway_AND_split" targetRef="Task_Fraud" />
+    <bpmn:sequenceFlow id="Flow_6" sourceRef="Task_Scoring" targetRef="Gateway_AND_join" />
+    <bpmn:sequenceFlow id="Flow_7" sourceRef="Task_Fraud" targetRef="Gateway_AND_join" />
+    <bpmn:sequenceFlow id="Flow_8" sourceRef="Gateway_AND_join" targetRef="Gateway_XOR_split" />
+    <bpmn:sequenceFlow id="Flow_9" sourceRef="Gateway_XOR_split" targetRef="Task_AutoApprove" />
+    <bpmn:sequenceFlow id="Flow_10" sourceRef="Gateway_XOR_split" targetRef="Task_ManualReview" />
+    <bpmn:sequenceFlow id="Flow_11" sourceRef="Task_AutoApprove" targetRef="Gateway_XOR_join" />
+    <bpmn:sequenceFlow id="Flow_12" sourceRef="Task_ManualReview" targetRef="Gateway_XOR_join" />
+    <bpmn:sequenceFlow id="Flow_13" sourceRef="Gateway_XOR_join" targetRef="Task_Approval" />
+    <bpmn:sequenceFlow id="Flow_14" sourceRef="Task_Approval" targetRef="EndEvent_1" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_loan_full">
+    <bpmndi:BPMNPlane id="BPMNPlane_loan_full" bpmnElement="loan_full">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="82" y="82" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Upload_di" bpmnElement="Task_Upload">
+        <dc:Bounds x="200" y="60" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_KYC_di" bpmnElement="Task_KYC">
+        <dc:Bounds x="350" y="60" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_AND_split_di" bpmnElement="Gateway_AND_split">
+        <dc:Bounds x="525" y="75" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Scoring_di" bpmnElement="Task_Scoring">
+        <dc:Bounds x="650" y="-40" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Fraud_di" bpmnElement="Task_Fraud">
+        <dc:Bounds x="650" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_AND_join_di" bpmnElement="Gateway_AND_join">
+        <dc:Bounds x="825" y="75" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_XOR_split_di" bpmnElement="Gateway_XOR_split" isMarkerVisible="true">
+        <dc:Bounds x="975" y="75" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AutoApprove_di" bpmnElement="Task_AutoApprove">
+        <dc:Bounds x="1100" y="-40" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ManualReview_di" bpmnElement="Task_ManualReview">
+        <dc:Bounds x="1100" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_XOR_join_di" bpmnElement="Gateway_XOR_join" isMarkerVisible="true">
+        <dc:Bounds x="1275" y="75" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Approval_di" bpmnElement="Task_Approval">
+        <dc:Bounds x="1400" y="60" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
+        <dc:Bounds x="1582" y="82" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="118" y="100" />
+        <di:waypoint x="200" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="300" y="100" />
+        <di:waypoint x="350" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <di:waypoint x="450" y="100" />
+        <di:waypoint x="525" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <di:waypoint x="575" y="100" />
+        <di:waypoint x="612" y="100" />
+        <di:waypoint x="612" y="0" />
+        <di:waypoint x="650" y="0" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5">
+        <di:waypoint x="575" y="100" />
+        <di:waypoint x="612" y="100" />
+        <di:waypoint x="612" y="200" />
+        <di:waypoint x="650" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_6_di" bpmnElement="Flow_6">
+        <di:waypoint x="750" y="0" />
+        <di:waypoint x="787" y="0" />
+        <di:waypoint x="787" y="100" />
+        <di:waypoint x="825" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_7_di" bpmnElement="Flow_7">
+        <di:waypoint x="750" y="200" />
+        <di:waypoint x="787" y="200" />
+        <di:waypoint x="787" y="100" />
+        <di:waypoint x="825" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_8_di" bpmnElement="Flow_8">
+        <di:waypoint x="875" y="100" />
+        <di:waypoint x="975" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_9_di" bpmnElement="Flow_9">
+        <di:waypoint x="1025" y="100" />
+        <di:waypoint x="1062" y="100" />
+        <di:waypoint x="1062" y="0" />
+        <di:waypoint x="1100" y="0" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_10_di" bpmnElement="Flow_10">
+        <di:waypoint x="1025" y="100" />
+        <di:waypoint x="1062" y="100" />
+        <di:waypoint x="1062" y="200" />
+        <di:waypoint x="1100" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_11_di" bpmnElement="Flow_11">
+        <di:waypoint x="1200" y="0" />
+        <di:waypoint x="1237" y="0" />
+        <di:waypoint x="1237" y="100" />
+        <di:waypoint x="1275" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_12_di" bpmnElement="Flow_12">
+        <di:waypoint x="1200" y="200" />
+        <di:waypoint x="1237" y="200" />
+        <di:waypoint x="1237" y="100" />
+        <di:waypoint x="1275" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_13_di" bpmnElement="Flow_13">
+        <di:waypoint x="1325" y="100" />
+        <di:waypoint x="1400" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_14_di" bpmnElement="Flow_14">
+        <di:waypoint x="1500" y="100" />
+        <di:waypoint x="1582" y="100" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
