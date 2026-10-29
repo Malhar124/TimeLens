@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 import numpy as np
 import numpy.typing as npt
@@ -84,7 +84,7 @@ def check_invariant(D: Matrix, C: Coefs, p: npt.NDArray[np.int64]) -> None:
 
 
 def bellman_ford_cycle(
-    n: int, edges: list[tuple[int, int, float]], source: int | None = None
+    n: int, edges: Sequence[tuple[int, int, float]], source: int | None = None
 ) -> list[int] | None:
     """Return one negative cycle as a node list, or None. O(n * edges).
 
