@@ -18,7 +18,7 @@ NO_COST_NOTE = "No costs in this report. Durations and deadlines are model input
 Report = dict[str, Any]
 
 
-def header(inputs: dict[str, str], assumption_note: str, alpha: float | None = None,
+def header(inputs: dict[str, str], assumption_note: str, alpha: float | str | None = None,
            deadline_choice: str | None = None) -> Report:
     """Return the header every report file starts with."""
     return {"date": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"), "inputs": inputs,

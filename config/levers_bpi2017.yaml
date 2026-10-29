@@ -1,0 +1,31 @@
+# Levers for the BPI 2017 model. Every number here is an ASSUMPTION.
+# Cost rates reuse the illustrative rates of levers_loan.yaml (staff 20,000, customer
+# reminders 30,000, deadline extension 50,000 INR per day). max_change values are assumptions.
+currency: INR
+assumption_note: "All costs and lever limits are illustrative assumptions, not real bank data."
+granularity: 1h
+levers:
+  - id: add_completion_staff
+    label: "Add one officer for application completion"
+    param: Task_Complete.max
+    direction: decrease
+    cost_per_day: 20000
+    max_change: 2d
+  - id: nudge_customer
+    label: "Send reminders to the customer"
+    param: Task_CustomerReturn.max
+    direction: decrease
+    cost_per_day: 30000
+    max_change: 10d
+  - id: add_validation_staff
+    label: "Add one officer for application validation"
+    param: Task_Validate.max
+    direction: decrease
+    cost_per_day: 20000
+    max_change: 2d
+  - id: extend_deadline
+    label: "Extend the decision deadline (SLA penalty)"
+    param: C_deadline.max
+    direction: increase
+    cost_per_day: 50000
+    max_change: 10d

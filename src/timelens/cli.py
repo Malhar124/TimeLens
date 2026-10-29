@@ -13,8 +13,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any, ParamSpec, TypeVar
 
+import pandas as pd
 import typer
 
+from timelens.analysis.frontier import cost_never_decreases
+from timelens.analysis.frontier import frontier as run_frontier
 from timelens.analysis.repair import repair as run_repair
 from timelens.analysis.verdict import check_process
 from timelens.errors import TimeLensError
@@ -25,7 +28,7 @@ from timelens.mining.calibrate import (
     default_deadline_days,
 )
 from timelens.mining.log import case_times, discover, load_log, load_mapping, split_by_time
-from timelens.model.process import load_model
+from timelens.model.process import load_model, load_process
 from timelens.model.rules import Rules, load_levers
 from timelens.report.text import NO_COST_NOTE, check_report, header, render, repair_block
 from timelens.units import format_minutes
@@ -162,3 +165,47 @@ def calibrate(log: Path, mapping: Path, template: Path,
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(res.rules, indent=2))
     typer.echo(f"Rules written: {out}")
+
+
+ResultsDir = Annotated[Path, typer.Option(help="Directory for result files.")]
+
+
+def _csv_header(head: dict[str, Any]) -> str:
+    """Return the report header as '#' comment lines for CSV files."""
+    lines = [f"date: {head['date']}", *[f"input {k}: {v}" for k, v in head["inputs"].items()],
+             f"alpha: {head['alpha']}", f"deadline choice: {head['deadline_choice']}",
+             f"assumptions: {head['assumption_note']}"]
+    return "".join(f"# {x}\n" for x in lines)
+
+
+@app.command()
+@guarded
+def frontier(model: Path, log: Path, mapping: Path, template: Path, levers: Path,
+             deadline_days: DeadlineDays = None, out_dir: ResultsDir = Path("results")) -> None:
+    """Risk vs cost frontier over alpha in 0.80, 0.85, 0.90, 0.95, 0.99."""
+    from timelens.report.plots import frontier_png
+
+    process, lv = load_process(model), load_levers(levers)
+    train, test = _prepare(log, mapping)
+    deadline, reason = _deadline(train, deadline_days)
+    typer.echo(reason)
+    points = run_frontier(process, train, test, json.loads(template.read_text()), lv, deadline,
+                          reason)
+    head = header({"model": str(model), "log": str(log), "mapping": str(mapping),
+                   "template": str(template), "levers": str(levers)}, lv.assumption_note,
+                  alpha="0.80,0.85,0.90,0.95,0.99", deadline_choice=reason)
+    typer.echo(f"{'alpha':>6}{'risk %':>9}{'verdict':>10}{'status':>12}{'cost':>14}  changes")
+    for p in points:
+        typer.echo(f"{p.alpha:>6.2f}{p.risk * 100:>9.2f}{p.verdict:>10}{p.status:>12}"
+                   f"{p.cost:>14,.0f}  {p.changes or '-'} {p.note}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows = [vars(p) for p in points]
+    with (out_dir / "frontier.csv").open("w") as f:
+        f.write(_csv_header(head))
+        f.write(pd.DataFrame(rows).to_csv(index=False))
+    frontier_png(points, out_dir / "frontier.png", lv.currency,
+                 f"{lv.assumption_note} {reason}")
+    typer.echo(f"Wrote {out_dir / 'frontier.csv'} and {out_dir / 'frontier.png'}")
+    if not cost_never_decreases(points):
+        typer.echo("BUG: minimum cost goes down when alpha goes up. Please report it.", err=True)
+        raise typer.Exit(3)
