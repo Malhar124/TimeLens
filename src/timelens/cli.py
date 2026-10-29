@@ -269,3 +269,32 @@ def alerts_eval(model: Path, rules: Path, log: Path, mapping: Path,
     (out_dir / "alerts_eval.md").write_text(render_markdown("TimeLens alert evaluation",
                                                             report, table))
     typer.echo(f"Wrote {out_dir / 'alerts_eval.json'} and {out_dir / 'alerts_eval.md'}")
+
+
+@app.command()
+@guarded
+def bench(sizes: Annotated[str, typer.Option(help="Comma-separated task counts.")]
+          = "10,25,50,100,200,300",
+          models: Annotated[int, typer.Option(min=1, help="Models per size.")] = 20,
+          seed: int = 7, out_dir: ResultsDir = Path("results")) -> None:
+    """Time the consistency, SC and DC checks on random structured processes."""
+    from timelens.bench.run import run_bench
+    from timelens.report.plots import bench_png
+
+    try:
+        size_list = tuple(int(x) for x in sizes.split(","))
+    except ValueError as e:
+        raise TimeLensError(f"--sizes must be integers separated by commas: {sizes!r}") from e
+    table = run_bench(size_list, models, seed, progress=typer.echo)
+    head = header({"generator": f"random structured processes, seed {seed}"},
+                  "Random models; lag bounds and the lag count (one per 10 tasks) are "
+                  "assumptions of the generator.")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with (out_dir / "bench.csv").open("w") as f:
+        f.write(_csv_header(head))
+        f.write(table.to_csv(index=False))
+    bench_png(table, out_dir / "bench.png")
+    med = table.groupby("tasks")[["timepoints", "dc", "consistency_s", "sc_s", "dc_s",
+                                  "dc_prov_s"]].median()
+    typer.echo(med.to_string(float_format=lambda v: f"{v:.4f}"))
+    typer.echo(f"Wrote {out_dir / 'bench.csv'} and {out_dir / 'bench.png'}")

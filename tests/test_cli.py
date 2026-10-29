@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from typer.testing import CliRunner
 
 from timelens.cli import app
@@ -58,7 +59,8 @@ def test_repair_writes_rules_that_check_as_dc(tmp_path, minimal_paths):
     out = tmp_path / "repaired.rules.json"
     runner.invoke(app, ["repair", *map(str, minimal_paths), "config/levers_loan.yaml",
                         "--rules-out", str(out)])
-    res = runner.invoke(app, ["check", str(minimal_paths[0]), str(out)])
+    with pytest.warns(UserWarning, match="Task_KYC: contingent with min == max"):
+        res = runner.invoke(app, ["check", str(minimal_paths[0]), str(out)])
     assert res.exit_code == 0, res.output
 
 
